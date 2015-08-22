@@ -69,21 +69,22 @@ function new_ship(scene, obj, size, ai, weapons, position, velocity, vector) {
         velocity: velocity,
         thrust: 0,
         health: 100,
+        dead: false,
         weapons: weapons,
         radius: size,
         radius_squared: size * size,
         has_collided: function (test) {
             return this.object.position.distanceToSquared(test.object.position) < (this.radius_squared + test.radius_squared);
         },
-        ai: ai
+        ai: ai,
+        scene: scene
     };
 }
 
 function init_game_state(scene) {
     var player = new_ship(
         scene,
-        //new THREE.Mesh(assets.fighter.mesh, assets.fighter.texture.friendly),
-        assets.fighter.model,
+        assets.fighter.model.clone(),
         assets.fighter.size,
         function (dt) {
             if (inputs.keyboard.w) {
@@ -105,7 +106,7 @@ function init_game_state(scene) {
     for (var n = 0; n < 10; n++) {
         var ship = new_ship(
             scene,
-            new THREE.Mesh(assets.fighter.mesh, assets.fighter.texture.friendly),
+            assets.fighter.model.clone(),
             assets.fighter.size,
             function (dt) {
                 this.object.rotateX(-dt * (Math.random() - 0.5));
@@ -125,18 +126,40 @@ function init_game_state(scene) {
 
 function update_physics(dt) {
     var new_physics = [];
-    for (var s in physics) {
-        var obj = physics[s];
-        if (obj.health < 0) {
-            // TODO: make it explode
+    while (physics.length > 0) {
+        var ship = physics.pop();
+        ship.ai(dt);
+        var thrust = new THREE.Vector3(0, 0, dt * -ship.thrust);
+        thrust.applyQuaternion(ship.object.quaternion);
+        ship.velocity.multiplyScalar(0.9);
+        ship.velocity.add(thrust);
+        ship.object.position.add(ship.velocity);
+
+        for (var s=0; s < physics.length; s++) {
+            var target = physics[s];
+            if (ship.has_collided(target)) {
+                if (ship == player) {
+                    target.dead = true;
+                } else if (target == player) {
+                    ship.dead = true;
+                } else // REMOVE THIS
+                if (ship.radius > target.radius) {
+                    ship.health -= target.radius_squared;
+                    target.dead = true;
+                } else if (ship.radius < target.radius) {
+                    target.health -= ship.radius_squared;
+                    ship.dead = true;
+                } else {
+                    ship.dead = target.dead = true;
+                }
+            }
+        }
+
+        if (ship.health < 0) ship.dead = true;
+        if (!ship.dead) {
+            new_physics.push(ship);
         } else {
-            obj.ai(dt);
-            var thrust = new THREE.Vector3(0, 0, dt * -obj.thrust);
-            thrust.applyQuaternion(obj.object.quaternion);
-            obj.velocity.multiplyScalar(0.9);
-            obj.velocity.add(thrust);
-            obj.object.position.add(obj.velocity);
-            new_physics.push(obj);
+            ship.scene.remove(ship.object);
         }
     }
     physics = new_physics;
@@ -295,8 +318,12 @@ function _init() {
     renderer.camera.position.z = -20;
     player.object.add(renderer.camera);
 
-    var ambient = new THREE.AmbientLight(0xffffff);
+    var ambient = new THREE.AmbientLight(0x888888);
     scene.add(ambient);
+
+    var directional = new THREE.DirectionalLight(0xffffff, 0.5);
+    directional.position.set(0, 1000, 0);
+    scene.add(directional);
 
     init_input_handlers(renderer.renderer.domElement);
 
