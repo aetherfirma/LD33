@@ -44,7 +44,7 @@ var inputs = {
 };
 
 function init_renderer() {
-    var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10e9);
 
     var renderer = new THREE.WebGLRenderer();
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -84,15 +84,12 @@ function init_game_state(scene) {
         assets.fighter.size,
         function (dt) {
             if (inputs.keyboard.w) {
-                this.thrust = Math.min(3, this.thrust + dt);
+                this.thrust = Math.min(3, this.thrust + dt * 0.1);
             }
             if (inputs.keyboard.s) {
-                this.thrust = Math.max(-1, this.thrust - dt);
+                this.thrust = Math.max(-1, this.thrust - dt * 0.1);
             }
-            var quart = new THREE.Quaternion();
-            quart.setFromAxisAngle(new THREE.Vector3(0,1,0), inputs.mouse.location.x * dt * 0.05);
-            this.rotation.applyQuaternion(quart);
-            quart.setFromAxisAngle(new THREE.Vector3(1,0,0), inputs.mouse.location.y * dt * 0.05);
+            var quart = new THREE.Quaternion(inputs.mouse.location.y * -dt * 0.05, inputs.mouse.location.x * -dt * 0.05, 0, 1);
             this.rotation.applyQuaternion(quart);
         },
         []
@@ -120,9 +117,9 @@ function update_physics(dt) {
 }
 
 function init_input_handlers(canvas) {
-    canvas.requestPointerLock = canvas.requestPointerLock ||
-            canvas.mozRequestPointerLock ||
-            canvas.webkitRequestPointerLock;
+    document.body.onclick = document.body.requestPointerLock ||
+            document.body.mozRequestPointerLock ||
+            document.body.webkitRequestPointerLock;
 
     function moveCallback(e) {
         inputs.mouse.location.x = e.movementX ||
@@ -137,17 +134,16 @@ function init_input_handlers(canvas) {
 
     function changeCallback(evt) {
         console.log("change callback is has been called", evt);
-        if (document.pointerLockElement === requestedElement ||
-            document.mozPointerLockElement === requestedElement ||
-            document.webkitPointerLockElement === requestedElement) {
+        if (document.pointerLockElement === document.body ||
+            document.mozPointerLockElement === document.body ||
+            document.webkitPointerLockElement === document.body) {
             // Pointer was just locked
             // Enable the mousemove listener
-            document.addEventListener("mousemove", this.moveCallback, false);
+            document.addEventListener("mousemove", moveCallback, false);
         } else {
             // Pointer was just unlocked
             // Disable the mousemove listener
-            document.removeEventListener("mousemove", this.moveCallback, false);
-            this.unlockHook(this.element);
+            document.removeEventListener("mousemove", moveCallback, false);
         }
     }
 
@@ -166,7 +162,7 @@ function init_input_handlers(canvas) {
 
     // Ask the browser to lock the pointer)
     console.log("Requesting pointer lock");
-    canvas.requestPointerLock();
+    document.body.requestPointerLock();
 
 
     var win = $(window);
@@ -258,8 +254,8 @@ function init() {
         render = function (now) {
             update_physics((now - last)/1000);
             last = now;
-            renderer.camera.position.fromArray(player.object.position.toArray());
-            renderer.camera.rotation = player.object.rotation;
+            renderer.camera.position.copy(player.object.position);
+            renderer.camera.rotation.copy(player.object.rotation);
             renderer.renderer.render(scene, renderer.camera);
             requestAnimationFrame(render);
         };
