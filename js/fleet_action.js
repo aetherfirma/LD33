@@ -304,7 +304,7 @@ function create_explosion(scene, position, velocity, vector, size) {
     var geometry = new THREE.Geometry(),
         material = new THREE.PointCloudMaterial({
             color: Math.round(Math.random() * 0x88 + 0x87) * 0x10000,
-            size: 25
+            size: 30
         }),
         cloud = new THREE.PointCloud(geometry, material);
     for (var i=0; i < size; i++) {
