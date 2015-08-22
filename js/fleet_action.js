@@ -24,7 +24,7 @@ var assets = {
         size: 3
     }
 };
-var physics = [];
+var physics = [], explosions = [];
 var inputs = {
     mouse: {
         location: new THREE.Vector2(0,0),
@@ -156,10 +156,11 @@ function update_physics(dt) {
         }
 
         if (ship.health < 0) ship.dead = true;
-        if (!ship.dead) {
-            new_physics.push(ship);
-        } else {
+        if (ship.dead) {
+            create_explosion(ship.scene, ship.object.position, ship.velocity, ship.object.quaternion, 50);
             ship.scene.remove(ship.object);
+        } else {
+            new_physics.push(ship);
         }
     }
     physics = new_physics;
@@ -299,6 +300,50 @@ function init_input_handlers(canvas) {
     });
 }
 
+function create_explosion(scene, position, velocity, vector, size) {
+    var geometry = new THREE.Geometry(),
+        material = new THREE.PointCloudMaterial({
+            color: Math.round(Math.random() * 0x88 + 0x87) * 0x10000,
+            size: 25
+        }),
+        cloud = new THREE.PointCloud(geometry, material);
+    for (var i=0; i < size; i++) {
+        var particle = position.clone();
+        particle.velocity = velocity.clone();
+        particle.velocity.applyQuaternion(vector);
+        particle.velocity.add(new THREE.Vector3((Math.random() * 10 - 5) * 20, (Math.random() * 10 - 5) * 20, (Math.random() * 10 - 5) * 20));
+        geometry.vertices.push(particle);
+    }
+    cloud.sortParticles = true;
+    cloud.scene = scene;
+    cloud.lifetime = Math.random() * 5 + 2;
+    cloud.alive = 0;
+    cloud.particles = size;
+    scene.add(cloud);
+    explosions.push(cloud);
+}
+
+function update_explosions(dt) {
+    var new_explosions = [];
+    while (explosions.length > 0) {
+        var explosion = explosions.pop();
+        explosion.alive += dt;
+        if (explosion.alive > explosion.lifetime) {
+            explosion.scene.remove(explosion);
+            continue;
+        }
+        for (var i=0; i < explosion.geometry.vertices.length; i++) {
+            var particle = explosion.geometry.vertices[i];
+            var velocity = particle.velocity.clone();
+            velocity.multiplyScalar(dt);
+            particle.add(velocity);
+        }
+        explosion.geometry.verticesNeedUpdate = true;
+        new_explosions.push(explosion);
+    }
+    explosions = new_explosions;
+}
+
 var player = null;
 
 function _init() {
@@ -307,7 +352,11 @@ function _init() {
         //player = init_game_state(scene),
         last = 0,
         render = function (now) {
-            if (pointerLockElement()) update_physics((now - last)/1000);
+            var dt = (now - last)/1000;
+            if (pointerLockElement()) {
+                update_physics(dt);
+                update_explosions(dt);
+            }
             last = now;
             //renderer.camera.position.copy(player.object.position);
             //renderer.camera.rotation.copy(player.object.rotation);
@@ -315,6 +364,8 @@ function _init() {
             requestAnimationFrame(render);
         };
     player = init_game_state(scene);
+    //renderer.camera.position.z = 150;
+    //renderer.camera.position.y = 50;
     renderer.camera.position.z = -20;
     player.object.add(renderer.camera);
 
