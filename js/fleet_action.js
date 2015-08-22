@@ -82,7 +82,8 @@ function new_ship(scene, obj, size, ai, weapons, position, velocity, vector) {
 function init_game_state(scene) {
     var player = new_ship(
         scene,
-        new THREE.Mesh(assets.fighter.mesh, assets.fighter.texture.friendly),
+        //new THREE.Mesh(assets.fighter.mesh, assets.fighter.texture.friendly),
+        assets.fighter.model,
         assets.fighter.size,
         function (dt) {
             if (inputs.keyboard.w) {
@@ -277,7 +278,7 @@ function init_input_handlers(canvas) {
 
 var player = null;
 
-function init() {
+function _init() {
     var renderer = init_renderer(),
         scene = new THREE.Scene(),
         //player = init_game_state(scene),
@@ -285,15 +286,30 @@ function init() {
         render = function (now) {
             if (pointerLockElement()) update_physics((now - last)/1000);
             last = now;
-            renderer.camera.position.copy(player.object.position);
-            renderer.camera.rotation.copy(player.object.rotation);
+            //renderer.camera.position.copy(player.object.position);
+            //renderer.camera.rotation.copy(player.object.rotation);
             renderer.renderer.render(scene, renderer.camera);
             requestAnimationFrame(render);
         };
     player = init_game_state(scene);
+    renderer.camera.position.z = -20;
+    player.object.add(renderer.camera);
 
+    var ambient = new THREE.AmbientLight(0xffffff);
+    scene.add(ambient);
 
     init_input_handlers(renderer.renderer.domElement);
 
     requestAnimationFrame(render);
+}
+
+function init() {
+    var loader = new THREE.ColladaLoader({convertUpAxis: true});
+    loader.load("models/fighter.dae", function (collada) {
+        var dae = collada.scene.children[0];
+        dae.scale.x = dae.scale.y = dae.scale.z = 3/39;
+        dae.updateMatrix();
+        assets.fighter.model = dae;
+        _init();
+    });
 }
