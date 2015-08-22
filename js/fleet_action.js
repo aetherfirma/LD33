@@ -65,7 +65,7 @@ function new_ship(scene, obj, size, ai, weapons) {
     return {
         object: obj,
         velocity: new THREE.Vector3(0,0,0),
-        rotation: new THREE.Vector3(0,0,1),
+        rotation: new THREE.Quaternion(0,0,0,1),
         thrust: 0,
         health: 100,
         weapons: weapons,
@@ -89,8 +89,8 @@ function init_game_state(scene) {
             if (inputs.keyboard.s) {
                 this.thrust = Math.max(-1, this.thrust - dt * 0.1);
             }
-            var quart = new THREE.Quaternion(inputs.mouse.location.y * -dt * 0.05, inputs.mouse.location.x * -dt * 0.05, 0, 1);
-            this.rotation.applyQuaternion(quart);
+            this.object.rotateX(inputs.mouse.location.y * -dt * 0.1);
+            this.object.rotateY(inputs.mouse.location.x * -dt * 0.1);
         },
         []
     );
@@ -107,9 +107,11 @@ function update_physics(dt) {
             // TODO: make it explode
         } else {
             obj.ai(dt);
-            obj.velocity.add(obj.rotation.clone().multiplyScalar(dt * -obj.thrust));
+            var thrust = new THREE.Vector3(0, 0, dt * -obj.thrust);
+            thrust.applyQuaternion(obj.object.quaternion);
+            obj.velocity.multiplyScalar(0.9);
+            obj.velocity.add(thrust);
             obj.object.position.add(obj.velocity);
-            obj.object.lookAt(obj.object.position.clone().add(obj.rotation));
             new_physics.push(obj);
         }
     }
