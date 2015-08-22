@@ -60,18 +60,20 @@ function init_renderer() {
     };
 }
 
-function new_ship(scene, obj, size, ai, weapons) {
+function new_ship(scene, obj, size, ai, weapons, position, velocity, vector) {
     scene.add(obj);
+    obj.position.set(position.x, position.y, position.z);
+    obj.rotation.clone(vector);
     return {
         object: obj,
-        velocity: new THREE.Vector3(0,0,0),
-        rotation: new THREE.Quaternion(0,0,0,1),
+        velocity: velocity,
         thrust: 0,
         health: 100,
         weapons: weapons,
         radius: size,
+        radius_squared: size * size,
         has_collided: function (test) {
-            return this.object.position.distanceTo(test.object.position) < (this.radius + test.radius);
+            return this.object.position.distanceToSquared(test.object.position) < (this.radius_squared + test.radius_squared);
         },
         ai: ai
     };
@@ -92,9 +94,30 @@ function init_game_state(scene) {
             this.object.rotateX(inputs.mouse.location.y * -dt * 0.1);
             this.object.rotateY(inputs.mouse.location.x * -dt * 0.1);
         },
-        []
+        [],
+        new THREE.Vector3(0,0,0),
+        new THREE.Vector3(0,0,0),
+        new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0)
     );
     physics.push(player);
+
+    for (var n = 0; n < 10; n++) {
+        var ship = new_ship(
+            scene,
+            new THREE.Mesh(assets.fighter.mesh, assets.fighter.texture.friendly),
+            assets.fighter.size,
+            function (dt) {
+                this.object.rotateX(-dt * (Math.random() - 0.5));
+                this.object.rotateY(-dt * (Math.random() - 0.5));
+                this.thrust = Math.random() * 4 - 1;
+            },
+            [],
+            new THREE.Vector3(Math.random() * 1000 - 500, Math.random() * 1000 - 500, Math.random() * 1000 - 500),
+            new THREE.Vector3(0,0,0),
+            new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0)
+        );
+        physics.push(ship);
+    }
 
     return player; // change this!
 }
@@ -116,6 +139,12 @@ function update_physics(dt) {
         }
     }
     physics = new_physics;
+}
+
+function pointerLockElement() {
+    return document.pointerLockElement ||
+            document.mozPointerLockElement ||
+            document.webkitPointerLockElement;
 }
 
 function init_input_handlers(canvas) {
@@ -254,7 +283,7 @@ function init() {
         //player = init_game_state(scene),
         last = 0,
         render = function (now) {
-            update_physics((now - last)/1000);
+            if (pointerLockElement()) update_physics((now - last)/1000);
             last = now;
             renderer.camera.position.copy(player.object.position);
             renderer.camera.rotation.copy(player.object.rotation);
@@ -263,14 +292,6 @@ function init() {
         };
     player = init_game_state(scene);
 
-    for (var i = 0; i < 100; i++) {
-        var ball = new THREE.Mesh(
-            new THREE.SphereGeometry(2),
-            new THREE.MeshBasicMaterial({color: 0xffffff})
-        );
-        ball.position.set(Math.random() * 1000 - 500, Math.random() * 1000 - 500, Math.random() * 1000 - 500);
-        scene.add(ball);
-    }
 
     init_input_handlers(renderer.renderer.domElement);
 
