@@ -67,13 +67,15 @@ function new_laser() {
         status: function () {
             return Math.round(Math.max(this.capacity, 0)) + "%";
         },
-        update: function (dt) {
-            this.capacity = Math.max(this.capacity + dt * 25, 100);
+        update: function (dt, ship) {
+            if (ship.weapon_fire_cooldown > 0) return;
+            this.capacity = Math.min(this.capacity + dt * 25, 100);
         },
         fire: function (dt, ship) {
             if (this.capacity < 0) {
                 return;
             }
+            ship.weapon_fire_cooldown = .5;
             this.capacity -= dt * 50;
             // TODO: Fire laser
         }
@@ -87,12 +89,16 @@ function new_missile() {
         status: function () {
             return this.capacity + "/25";
         },
-        update: function (dt) {},
+        update: function (dt, ship) {},
         fire: function (dt, ship) {
+            if (ship.weapon_fire_cooldown > 0) return;
             if (this.capacity <= 0) {
+                send_comms_message("&gt;OUT OF MISSILES&lt;");
+                ship.weapon_fire_cooldown += 0.2;
                 return;
             }
             this.capacity -= 1;
+            ship.weapon_fire_cooldown += 0.6;
             // TODO: Fire missile
         }
     }
@@ -105,18 +111,22 @@ function new_rocket() {
         status: function () {
             return this.capacity + "/75";
         },
-        update: function (dt) {},
+        update: function (dt, ship) {},
         fire: function (dt, ship) {
+            if (ship.weapon_fire_cooldown > 0) return;
             if (this.capacity <= 0) {
+                send_comms_message("&gt;OUT OF ROCKETS&lt;");
+                ship.weapon_fire_cooldown += 0.2;
                 return;
             }
             this.capacity -= 1;
+            ship.weapon_fire_cooldown += 0.3;
             // TODO: Fire rocket
         }
     }
 }
 
-function new_ship(scene, obj, size, ai, weapons, position, velocity, vector) {
+function new_ship(scene, obj, size, ai, weapons, position, velocity, vector, explodes) {
     scene.add(obj);
     obj.position.set(position.x, position.y, position.z);
     obj.rotation.clone(vector);
@@ -128,12 +138,35 @@ function new_ship(scene, obj, size, ai, weapons, position, velocity, vector) {
         dead: false,
         weapons: weapons,
         radius: size,
+        weapon_fire_cooldown: 0,
+        weapon_change_cooldown: 0,
+        selected_weapon: 0,
+        change_weapon: function (forwards) {
+            if (this.weapon_change_cooldown <= 0) {
+                if (forwards) {
+                    this.selected_weapon = (this.selected_weapon + 1) % this.weapons.length;
+                } else {
+                    this.selected_weapon = (this.selected_weapon + this.weapons.length - 1) % this.weapons.length;
+                }
+                this.weapon_change_cooldown += 0.250;
+            }
+        },
+        current_weapon: function () {
+            return this.weapons[this.selected_weapon];
+        },
+        next_weapon: function () {
+            return this.weapons[(this.selected_weapon + 1) % this.weapons.length];
+        },
+        previous_weapon: function () {
+            return this.weapons[(this.selected_weapon + this.weapons.length - 1) % this.weapons.length];
+        },
         radius_squared: size * size,
         has_collided: function (test) {
             return this.object.position.distanceToSquared(test.object.position) < (this.radius_squared + test.radius_squared);
         },
         ai: ai,
-        scene: scene
+        scene: scene,
+        explodes: explodes
     };
 }
 
@@ -155,14 +188,22 @@ function init_game_state(scene) {
             this.object.rotateX(inputs.mouse.location.y * -dt * 0.1);
             this.object.rotateY(inputs.mouse.location.x * -dt * 0.1);
             if (this.thrust > 2.5) {
-                var damage = (this.thrust - 2.45) * dt;
-                this.health -= damage;
+                this.health -= (this.thrust - 2.45) * dt;
             }
+            if (inputs.keyboard.d) this.change_weapon(true);
+            if (inputs.keyboard.a) this.change_weapon(false);
+            if (inputs.mouse.left) this.current_weapon().fire(dt, this);
+            if (inputs.mouse.right) this.next_weapon().fire(dt, this);
         },
-        [],
+        [
+            new_laser(),
+            new_missile(),
+            new_rocket()
+        ],
         new THREE.Vector3(0,0,0),
         new THREE.Vector3(0,0,0),
-        new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0)
+        new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0),
+        false
     );
     physics.push(player);
 
@@ -176,10 +217,15 @@ function init_game_state(scene) {
                 this.object.rotateY(-dt * (Math.random() - 0.5));
                 this.thrust = Math.random() * 4 - 1;
             },
-            [],
+            [
+                new_laser(),
+                new_missile(),
+                new_rocket()
+            ],
             new THREE.Vector3(Math.random() * 1000 - 500, Math.random() * 1000 - 500, Math.random() * 1000 - 500),
             new THREE.Vector3(0,0,0),
-            new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0)
+            new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0),
+            false
         );
         physics.push(ship);
     }
@@ -187,16 +233,22 @@ function init_game_state(scene) {
     return player; // change this!
 }
 
-function update_physics(dt) {
+function update_ships(dt) {
     var new_physics = [];
     while (physics.length > 0) {
         var ship = physics.pop();
         ship.ai(dt);
+        ship.weapon_fire_cooldown = Math.max(0, ship.weapon_fire_cooldown - dt);
+        ship.weapon_change_cooldown = Math.max(0, ship.weapon_change_cooldown - dt);
         var thrust = new THREE.Vector3(0, 0, dt * -ship.thrust);
         thrust.applyQuaternion(ship.object.quaternion);
-        ship.velocity.multiplyScalar(0.99);
+        ship.velocity.multiplyScalar(0.97);
         ship.velocity.add(thrust);
         ship.object.position.add(ship.velocity);
+
+        for (var w=0; w < ship.weapons.length; w++) {
+            ship.weapons[w].update(dt, ship);
+        }
 
         for (var s=0; s < physics.length; s++) {
             var target = physics[s];
@@ -342,6 +394,7 @@ function init_input_handlers(canvas) {
         }
     });
     win.mousedown(function (evt) {
+        if (!pointerLockElement()) return;
         switch (evt.which) {
             case 1:
                 inputs.mouse.left = true;
@@ -427,6 +480,18 @@ function update_ui(dt) {
         ui_console.find("#shields .value").removeClass("error warning");
         if (shields < 33) ui_console.find("#shields .value").addClass("warning");
         else if (shields < 66) ui_console.find("#shields .value").addClass("error");
+
+        var weapon_selected = player.current_weapon(),
+            next_weapon = player.next_weapon(),
+            previous_wepon = player.previous_weapon();
+        ui_console.find("#weapon-selected .title").html(weapon_selected.name);
+        ui_console.find("#weapon-selected .value").html(weapon_selected.status());
+
+        ui_console.find("#weapon-right .title").html(next_weapon.name);
+        ui_console.find("#weapon-right .value").html(next_weapon.status());
+
+        ui_console.find("#weapon-left .title").html(previous_wepon.name);
+        ui_console.find("#weapon-left .value").html(previous_wepon.status());
     }
 }
 
@@ -440,7 +505,7 @@ function _init() {
         render = function (now) {
             var dt = (now - last)/1000;
             if (pointerLockElement()) {
-                update_physics(dt);
+                update_ships(dt);
                 update_explosions(dt);
             }
             update_ui(dt);
