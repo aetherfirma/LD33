@@ -591,31 +591,34 @@ function send_comms_message(message) {
 }
 
 function update_ui(dt) {
-    if (pointerLockElement()) {
-        var thrust = Math.round(player.thrust * 100) / 2.5,
-            shields = Math.round(player.health * 10) / 10,
-            velocity = Math.round(player.velocity.length() * 50);
-        ui_console.find("#engines .value").text(velocity + "m/s");
-        if (thrust > 100) ui_console.find("#engines .value").addClass("error");
-        else ui_console.find("#engines .value").removeClass("error");
-
-        ui_console.find("#shields .value").text(shields + "%");
-        ui_console.find("#shields .value").removeClass("error warning");
-        if (shields < 33) ui_console.find("#shields .value").addClass("warning");
-        else if (shields < 66) ui_console.find("#shields .value").addClass("error");
-
-        var weapon_selected = player.current_weapon(),
-            next_weapon = player.next_weapon(),
-            previous_wepon = player.previous_weapon();
-        ui_console.find("#weapon-selected .title").html(weapon_selected.name);
-        ui_console.find("#weapon-selected .value").html(weapon_selected.status());
-
-        ui_console.find("#weapon-right .title").html(next_weapon.name);
-        ui_console.find("#weapon-right .value").html(next_weapon.status());
-
-        ui_console.find("#weapon-left .title").html(previous_wepon.name);
-        ui_console.find("#weapon-left .value").html(previous_wepon.status());
+    if (player.dead) {
+        ui_console.hide();
+        return;
     }
+
+    var thrust = Math.round(player.thrust * 100) / 2.5,
+        shields = Math.round(player.health * 10) / 10,
+        velocity = Math.round(player.velocity.length() * 50);
+    ui_console.find("#engines .value").text(velocity + "m/s");
+    if (thrust > 100) ui_console.find("#engines .value").addClass("error");
+    else ui_console.find("#engines .value").removeClass("error");
+
+    ui_console.find("#shields .value").text(shields + "%");
+    ui_console.find("#shields .value").removeClass("error warning");
+    if (shields < 33) ui_console.find("#shields .value").addClass("warning");
+    else if (shields < 66) ui_console.find("#shields .value").addClass("error");
+
+    var weapon_selected = player.current_weapon(),
+        next_weapon = player.next_weapon(),
+        previous_wepon = player.previous_weapon();
+    ui_console.find("#weapon-selected .title").html(weapon_selected.name);
+    ui_console.find("#weapon-selected .value").html(weapon_selected.status());
+
+    ui_console.find("#weapon-right .title").html(next_weapon.name);
+    ui_console.find("#weapon-right .value").html(next_weapon.status());
+
+    ui_console.find("#weapon-left .title").html(previous_wepon.name);
+    ui_console.find("#weapon-left .value").html(previous_wepon.status());
 }
 
 var player = null;
@@ -651,7 +654,7 @@ function _init() {
         last = 0,
         render = function (now) {
             var dt = (now - last)/1000;
-            if (pointerLockElement()) {
+            if (pointerLockElement() || player.dead) {
                 update_ships(dt);
                 update_explosions(dt);
                 update_laser_beams(dt);
@@ -683,11 +686,12 @@ function _init() {
     requestAnimationFrame(render);
 }
 
-var colladaLoader = new THREE.ColladaLoader({convertUpAxis: true, centerGeometry: true}),
+var colladaLoader1 = new THREE.ColladaLoader({convertUpAxis: true}),
+    colladaLoader2 = new THREE.ColladaLoader({convertUpAxis: true}),
     textureLoader = new THREE.TextureLoader(),
     required = [
         {
-            loader: colladaLoader,
+            loader: colladaLoader1,
             url: "models/fighter.dae",
             callback: function (collada) {
                 var dae = collada.scene.children[0];
@@ -697,7 +701,7 @@ var colladaLoader = new THREE.ColladaLoader({convertUpAxis: true, centerGeometry
             }
         },
         {
-            loader: colladaLoader,
+            loader: colladaLoader1,
             url: "models/capital.dae",
             callback: function (collada) {
                 var dae = collada.scene.children[0];
@@ -706,17 +710,17 @@ var colladaLoader = new THREE.ColladaLoader({convertUpAxis: true, centerGeometry
                 assets.capital_ship.model = dae;
             }
         },
-        //{
-        //    loader: colladaLoader,
-        //    url: "models/missile.dae",
-        //    callback: function (collada) {
-        //        var dae = collada.scene.children[0];
-        //        dae.scale.x = dae.scale.y = dae.scale.z = 3/39;
-        //        dae.updateMatrix();
-        //        assets.missile.model = dae;
-        //        assets.rocket.model = dae;
-        //    }
-        //},
+        {
+            loader: colladaLoader2,
+            url: "models/missile.dae",
+            callback: function (collada) {
+                var dae = collada.scene.children[0];
+                dae.scale.x = dae.scale.y = dae.scale.z = 3/39;
+                dae.updateMatrix();
+                assets.missile.model = dae;
+                assets.rocket.model = dae;
+            }
+        },
         {
             loader: textureLoader,
             url: "models/earth.png",
