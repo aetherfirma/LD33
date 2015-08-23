@@ -72,11 +72,12 @@ function new_laser() {
             this.capacity = Math.min(this.capacity + dt * 25, 100);
         },
         fire: function (dt, ship) {
+            if (ship.weapon_fire_cooldown > 0) return;
             if (this.capacity < 0) {
                 return;
             }
-            ship.weapon_fire_cooldown = .5;
-            this.capacity -= dt * 50;
+            ship.weapon_fire_cooldown += 0.1;
+            this.capacity -= 5;
             // TODO: Fire laser
         }
     }
