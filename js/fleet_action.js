@@ -1,6 +1,7 @@
 var assets = {
     fighter: {
-        size: 3
+        size: 3,
+        turn_rate: 1
     },
     capital_ship: {
         size: 3
@@ -98,7 +99,7 @@ function get_ship_from_collision(collisions) {
     };
 }
 
-function new_laser() {
+function new_laser(strength) {
     return {
         name: "LASER",
         capacity: 100,
@@ -114,8 +115,8 @@ function new_laser() {
             if (this.capacity < 0) {
                 return;
             }
-            ship.weapon_fire_cooldown += 0.1;
-            this.capacity -= 5;
+            ship.weapon_fire_cooldown += 0.25;
+            this.capacity -= 15;
             var vec = new THREE.Vector3(0,0,-1);
             vec.applyQuaternion(ship.object.quaternion);
             vec.normalize();
@@ -124,7 +125,7 @@ function new_laser() {
             var collisions = raycaster.intersectObjects(models, true);
             var target = get_ship_from_collision(collisions);
             if (target) {
-                target.ship.health -= 10;
+                target.ship.health -= strength;
                 new_laser_beam(ship.scene, ship.object.position, ship.object.quaternion, target.distance);
                 create_explosion(ship.scene, target.point, target.ship.velocity, target.ship.object.quaternion, 5);
             } else {
@@ -179,7 +180,7 @@ function new_rocket() {
     }
 }
 
-function new_ship(scene, obj, size, ai, weapons, position, velocity, vector, explodes) {
+function new_ship(scene, obj, size, ai, weapons, position, velocity, vector, explodes, turn_rate) {
     scene.add(obj);
     obj.position.set(position.x, position.y, position.z);
     obj.rotation.clone(vector);
@@ -219,7 +220,8 @@ function new_ship(scene, obj, size, ai, weapons, position, velocity, vector, exp
         },
         ai: ai,
         scene: scene,
-        explodes: explodes
+        explodes: explodes,
+        turn_rate: turn_rate
     };
     obj.ship = ship;
     return ship;
@@ -231,56 +233,63 @@ function init_game_state(scene) {
         assets.fighter.model.clone(),
         assets.fighter.size,
         function (dt) {
-                var old_thrust  = this.thrust;
             if (inputs.keyboard.w) {
                 this.thrust = Math.min(3, this.thrust + dt * 0.75);
-                if (old_thrust < 2.5 && this.thrust >= 2.5) send_comms_message("&gt;ENGINES OVERHEATING&lt;")
             }
             if (inputs.keyboard.s) {
                 this.thrust = Math.max(-1, this.thrust - dt * 0.75);
-                if (old_thrust >= 2.5 && this.thrust < 2.5) send_comms_message("&gt;ENGINE TEMP. NOMINAL&lt;")
             }
             this.object.rotateX(inputs.mouse.location.y * -dt * 0.1);
             this.object.rotateY(inputs.mouse.location.x * -dt * 0.1);
-            if (this.thrust > 2.5) {
-                this.health -= (this.thrust - 2.45) * dt;
-            }
             if (inputs.keyboard.d) this.change_weapon(true);
             if (inputs.keyboard.a) this.change_weapon(false);
             if (inputs.mouse.left) this.current_weapon().fire(dt, this);
             if (inputs.mouse.right) this.next_weapon().fire(dt, this);
         },
         [
-            new_laser(),
+            new_laser(5),
             new_missile(),
             new_rocket()
         ],
         new THREE.Vector3(0,0,0),
         new THREE.Vector3(0,0,0),
         new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0),
-        false
+        false,
+        assets.fighter.turn_rate
     );
     physics.push(player);
 
-    for (var n = 0; n < 10; n++) {
+    //for (var n = 0; n < 1; n++) {
+    for (var n = 0; n < 5; n++) {
         var ship = new_ship(
             scene,
             assets.fighter.model.clone(),
             assets.fighter.size,
             function (dt) {
-                this.object.rotateX(-dt * (Math.random() - 0.5));
-                this.object.rotateY(-dt * (Math.random() - 0.5));
-                this.thrust = Math.random() * 4 - 1;
+                var target_vector = player.object.position.clone().sub(this.object.position),
+                    range = target_vector.length(),
+                    velocity_vector = (new THREE.Vector3(0, 0, -1)).applyQuaternion(this.object.quaternion),
+                    angle = velocity_vector.angleTo(target_vector),
+                    lerp_amount = Math.min((this.turn_rate * dt) /angle, 1),
+                    angle_thrust = (1 - (angle / Math.PI)) * 3 - 0.5,
+                    distance_thrust = Math.min(Math.max((range - 50) / 10, -3), 1);
+
+                var quaternion = (new THREE.Quaternion()).setFromUnitVectors(velocity_vector.normalize(), target_vector.normalize());
+                quaternion.multiply(this.object.quaternion);
+                this.object.quaternion.slerp(quaternion, lerp_amount);
+                this.thrust = Math.min(angle_thrust, distance_thrust);
+                if (angle < 0.2 && range < 100) this.current_weapon().fire(dt, this);
             },
             [
-                new_laser(),
+                new_laser(1),
                 new_missile(),
                 new_rocket()
             ],
             new THREE.Vector3(Math.random() * 1000 - 500, Math.random() * 1000 - 500, Math.random() * 1000 - 500),
             new THREE.Vector3(0,0,0),
             new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0),
-            false
+            false,
+            assets.fighter.turn_rate
         );
         physics.push(ship);
     }
@@ -308,11 +317,11 @@ function update_ships(dt) {
         for (var s=0; s < physics.length; s++) {
             var target = physics[s];
             if (ship.has_collided(target)) {
-                if (ship == player) {
-                    target.dead = true;
-                } else if (target == player) {
-                    ship.dead = true;
-                } else // REMOVE THIS
+                //if (ship == player) {
+                //    target.dead = true;
+                //} else if (target == player) {
+                //    ship.dead = true;
+                //} else // REMOVE THIS
                 if (ship.radius > target.radius) {
                     ship.health -= target.radius_squared;
                     target.dead = true;
@@ -328,6 +337,7 @@ function update_ships(dt) {
         if (ship.health < 0) ship.dead = true;
         if (ship.dead) {
             create_explosion(ship.scene, ship.object.position, ship.velocity, ship.object.quaternion, 50);
+            send_comms_message("SHIP EXPLOSION");
             ship.scene.remove(ship.object);
         } else {
             new_physics.push(ship);
