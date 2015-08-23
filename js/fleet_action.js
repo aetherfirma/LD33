@@ -60,6 +60,62 @@ function init_renderer() {
     };
 }
 
+function new_laser() {
+    return {
+        name: "LASER",
+        capacity: 100,
+        status: function () {
+            return Math.round(Math.max(this.capacity, 0)) + "%";
+        },
+        update: function (dt) {
+            this.capacity = Math.max(this.capacity + dt * 25, 100);
+        },
+        fire: function (dt, ship) {
+            if (this.capacity < 0) {
+                return;
+            }
+            this.capacity -= dt * 50;
+            // TODO: Fire laser
+        }
+    }
+}
+
+function new_missile() {
+    return {
+        name: "MISSILE",
+        capacity: 25,
+        status: function () {
+            return this.capacity + "/25";
+        },
+        update: function (dt) {},
+        fire: function (dt, ship) {
+            if (this.capacity <= 0) {
+                return;
+            }
+            this.capacity -= 1;
+            // TODO: Fire missile
+        }
+    }
+}
+
+function new_rocket() {
+    return {
+        name: "ROCKET",
+        capacity: 75,
+        status: function () {
+            return this.capacity + "/75";
+        },
+        update: function (dt) {},
+        fire: function (dt, ship) {
+            if (this.capacity <= 0) {
+                return;
+            }
+            this.capacity -= 1;
+            // TODO: Fire rocket
+        }
+    }
+}
+
 function new_ship(scene, obj, size, ai, weapons, position, velocity, vector) {
     scene.add(obj);
     obj.position.set(position.x, position.y, position.z);
@@ -87,11 +143,14 @@ function init_game_state(scene) {
         assets.fighter.model.clone(),
         assets.fighter.size,
         function (dt) {
+                var old_thrust  = this.thrust;
             if (inputs.keyboard.w) {
                 this.thrust = Math.min(3, this.thrust + dt * 0.75);
+                if (old_thrust < 2.5 && this.thrust >= 2.5) send_comms_message("&gt;ENGINES OVERHEATING&lt;")
             }
             if (inputs.keyboard.s) {
                 this.thrust = Math.max(-1, this.thrust - dt * 0.75);
+                if (old_thrust >= 2.5 && this.thrust < 2.5) send_comms_message("&gt;ENGINE TEMP. NOMINAL&lt;")
             }
             this.object.rotateX(inputs.mouse.location.y * -dt * 0.1);
             this.object.rotateY(inputs.mouse.location.x * -dt * 0.1);
@@ -349,6 +408,11 @@ function update_explosions(dt) {
 }
 
 var ui_console = $("#console");
+
+function send_comms_message(message) {
+    var line = $("<li>" + message + "</li>");
+    ui_console.find("#chat ul").prepend(line)
+}
 
 function update_ui(dt) {
     if (pointerLockElement()) {
