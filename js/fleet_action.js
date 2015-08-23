@@ -1,27 +1,19 @@
 var assets = {
     fighter: {
-        mesh: new THREE.SphereGeometry(3),
-        texture: {
-            friendly: new THREE.MeshBasicMaterial({color: 0x00ff00}),
-            enemy: new THREE.MeshBasicMaterial({color: 0xff0000})
-        },
         size: 3
     },
     capital_ship: {
-        mesh: new THREE.SphereGeometry(10),
-        texture: {
-            friendly: new THREE.MeshBasicMaterial({color: 0x00ff00}),
-            enemy: new THREE.MeshBasicMaterial({color: 0xff0000})
-        },
         size: 3
     },
     pod: {
-        mesh: new THREE.SphereGeometry(1),
-        texture: {
-            friendly: new THREE.MeshBasicMaterial({color: 0x00ff00}),
-            enemy: new THREE.MeshBasicMaterial({color: 0xff0000})
-        },
         size: 3
+    },
+    earth: {},
+    missile: {
+        size: 1
+    },
+    rocket: {
+        size: 1
     }
 };
 var physics = [], explosions = [], lasers = [];
@@ -52,6 +44,7 @@ function init_renderer() {
     $(window).resize(function () {
         renderer.setSize(window.innerWidth, window.innerHeight);
         camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
     });
 
     return {
@@ -573,6 +566,30 @@ function update_ui(dt) {
 
 var player = null;
 
+function create_starfield(scene) {
+    var geometry = new THREE.Geometry(),
+        material = new THREE.PointCloudMaterial({color: 0xffffff, size: 1}),
+        vec;
+
+    for (var n=0; n < 2000; n++) {
+        vec = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1);
+        vec.normalize();
+        vec.setLength(Math.round(Math.random() * 100) * 10e6);
+        geometry.vertices.push(vec);
+    }
+
+    scene.add(new THREE.PointCloud(geometry, material));
+}
+
+function create_earth(scene) {
+    var geometry = new THREE.Geometry(),
+        material = new THREE.PointCloudMaterial({color: 0xffffff, size: 100, map: assets.earth.map, sizeAttenuation: false, transparent: true});
+
+    geometry.vertices.push(new THREE.Vector3(0, 1e6 - 100, 0));
+
+    scene.add(new THREE.PointCloud(geometry, material));
+}
+
 function _init() {
     var renderer = init_renderer(),
         scene = new THREE.Scene(),
@@ -592,16 +609,18 @@ function _init() {
             renderer.renderer.render(scene, renderer.camera);
             requestAnimationFrame(render);
         };
+    create_starfield(scene);
+    create_earth(scene);
     player = init_game_state(scene);
     //renderer.camera.position.z = 150;
     //renderer.camera.position.y = 50;
     renderer.camera.position.z = -20;
     player.object.add(renderer.camera);
 
-    var ambient = new THREE.AmbientLight(0x888888);
+    var ambient = new THREE.AmbientLight(0x444444);
     scene.add(ambient);
 
-    var directional = new THREE.DirectionalLight(0xffffff, 0.5);
+    var directional = new THREE.DirectionalLight(0xffffff, 0.625);
     directional.position.set(0, 1000, 0);
     scene.add(directional);
 
@@ -610,13 +629,37 @@ function _init() {
     requestAnimationFrame(render);
 }
 
+var colladaLoader = new THREE.ColladaLoader({convertUpAxis: true}),
+    textureLoader = new THREE.TextureLoader(),
+    required = [
+        {
+            loader: colladaLoader,
+            url: "models/fighter.dae",
+            callback: function (collada) {
+                var dae = collada.scene.children[0];
+                dae.scale.x = dae.scale.y = dae.scale.z = 3/39;
+                dae.updateMatrix();
+                assets.fighter.model = dae;
+            }
+        },
+        {
+            loader: textureLoader,
+            url: "models/earth.png",
+            callback: function (image) {
+                assets.earth.map = image;
+            }
+        }
+    ];
+
 function init() {
-    var loader = new THREE.ColladaLoader({convertUpAxis: true});
-    loader.load("models/fighter.dae", function (collada) {
-        var dae = collada.scene.children[0];
-        dae.scale.x = dae.scale.y = dae.scale.z = 3/39;
-        dae.updateMatrix();
-        assets.fighter.model = dae;
+    if (required.length > 0) {
+        var asset = required.pop();
+        asset.loader.load(asset.url, function (loaded) {
+            asset.callback(loaded);
+            init();
+        })
+    } else {
         _init();
-    });
+    }
+
 }
