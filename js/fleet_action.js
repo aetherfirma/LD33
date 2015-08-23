@@ -88,13 +88,17 @@ function init_game_state(scene) {
         assets.fighter.size,
         function (dt) {
             if (inputs.keyboard.w) {
-                this.thrust = Math.min(3, this.thrust + dt * 0.1);
+                this.thrust = Math.min(3, this.thrust + dt * 0.75);
             }
             if (inputs.keyboard.s) {
-                this.thrust = Math.max(-1, this.thrust - dt * 0.1);
+                this.thrust = Math.max(-1, this.thrust - dt * 0.75);
             }
             this.object.rotateX(inputs.mouse.location.y * -dt * 0.1);
             this.object.rotateY(inputs.mouse.location.x * -dt * 0.1);
+            if (this.thrust > 2.5) {
+                var damage = (this.thrust - 2.45) * dt;
+                this.health -= damage;
+            }
         },
         [],
         new THREE.Vector3(0,0,0),
@@ -131,7 +135,7 @@ function update_physics(dt) {
         ship.ai(dt);
         var thrust = new THREE.Vector3(0, 0, dt * -ship.thrust);
         thrust.applyQuaternion(ship.object.quaternion);
-        ship.velocity.multiplyScalar(0.9);
+        ship.velocity.multiplyScalar(0.99);
         ship.velocity.add(thrust);
         ship.object.position.add(ship.velocity);
 
@@ -344,6 +348,34 @@ function update_explosions(dt) {
     explosions = new_explosions;
 }
 
+var ui_console = $("#console");
+
+function update_ui(dt) {
+    if (!pointerLockElement()) {
+        ui_console.text("PAUSED");
+    } else {
+        var thrust = Math.round(player.thrust * 100) / 2.5,
+            shields = Math.round(player.health * 10) / 10,
+            velocity = Math.round(player.velocity.length() * 50);
+            msg = "";
+        msg += "ENGINES:<br>";
+        if (thrust > 100) {
+            msg += "<span style='color:red;'>" + thrust + "%</span>/" + velocity + "m/s";
+        } else {
+            msg += thrust + "%/" + velocity + "m/s";
+        }
+        msg += "<br>HULL INTEGRITY:<br>";
+        if (shields < 25) {
+            msg += "<span style='color:red;'>" + shields + "%</span>";
+        } else if (shields < 50) {
+            msg += "<span style='color:orange;'>" + shields + "%</span>";
+        } else {
+            msg += shields + "%";
+        }
+        ui_console.html(msg);
+    }
+}
+
 var player = null;
 
 function _init() {
@@ -357,6 +389,7 @@ function _init() {
                 update_physics(dt);
                 update_explosions(dt);
             }
+            update_ui(dt);
             last = now;
             //renderer.camera.position.copy(player.object.position);
             //renderer.camera.rotation.copy(player.object.rotation);
