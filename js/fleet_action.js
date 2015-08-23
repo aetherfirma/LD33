@@ -1,10 +1,11 @@
 var assets = {
     fighter: {
         size: 3,
-        turn_rate: 1
+        turn_rate: 0.5
     },
     capital_ship: {
-        size: 3
+        size: 7.5,
+        turn_rate: 0.1
     },
     pod: {
         size: 3
@@ -131,7 +132,6 @@ function new_laser(strength) {
             } else {
                 new_laser_beam(ship.scene, ship.object.position, ship.object.quaternion, 100);
             }
-            console.log(collisions, models);
         }
     }
 }
@@ -180,7 +180,7 @@ function new_rocket() {
     }
 }
 
-function new_ship(scene, obj, size, ai, weapons, position, velocity, vector, explodes, turn_rate) {
+function new_ship(scene, obj, size, ai, weapons, position, velocity, vector, explodes, turn_rate, faction) {
     scene.add(obj);
     obj.position.set(position.x, position.y, position.z);
     obj.rotation.clone(vector);
@@ -221,10 +221,43 @@ function new_ship(scene, obj, size, ai, weapons, position, velocity, vector, exp
         ai: ai,
         scene: scene,
         explodes: explodes,
-        turn_rate: turn_rate
+        turn_rate: turn_rate,
+        faction: faction,
+        target: null
     };
     obj.ship = ship;
     return ship;
+}
+
+function random_element(array) {
+    var n = Math.floor(Math.random() * array.length);
+    return array[n];
+}
+
+function fighter_ai(dt) {
+    if (this.target === null || this.target === undefined) this.target = random_element(physics);
+    if (this.target === null || this.target === undefined ||  this.target.dead || this.target.faction === this.faction || this.target == this) {
+        this.target = null
+    }
+
+    if (this.target !== null) {
+        var target_vector = this.target.object.position.clone().sub(this.object.position),
+            range = target_vector.length(),
+            velocity_vector = (new THREE.Vector3(0, 0, -1)).applyQuaternion(this.object.quaternion),
+            angle = velocity_vector.angleTo(target_vector),
+            lerp_amount = Math.min((this.turn_rate * dt) /angle, 1),
+            angle_thrust = (1 - (angle / Math.PI)) * 4 - 1,
+            distance_thrust = Math.min(Math.max((range - 50) / 10, -3), 3);
+
+        var quaternion = (new THREE.Quaternion()).setFromUnitVectors(velocity_vector.normalize(), target_vector.normalize());
+        quaternion.multiply(this.object.quaternion);
+        this.object.quaternion.slerp(quaternion, lerp_amount);
+        this.thrust = Math.min(angle_thrust, distance_thrust);
+        if (angle < 0.2 && range < 100) {
+            console.log(this.thrust);
+            if (this.thrust > -1) this.current_weapon().fire(dt, this);
+        }
+    }
 }
 
 function init_game_state(scene) {
@@ -255,33 +288,22 @@ function init_game_state(scene) {
         new THREE.Vector3(0,0,0),
         new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0),
         false,
-        assets.fighter.turn_rate
+        assets.fighter.turn_rate,
+        "player"
     );
     physics.push(player);
 
-    //for (var n = 0; n < 1; n++) {
-    for (var n = 0; n < 5; n++) {
-        var ship = new_ship(
+    var n, ship;
+
+    // Enemies
+    for (n = 0; n < 5; n++) {
+        ship = new_ship(
             scene,
             assets.fighter.model.clone(),
             assets.fighter.size,
-            function (dt) {
-                var target_vector = player.object.position.clone().sub(this.object.position),
-                    range = target_vector.length(),
-                    velocity_vector = (new THREE.Vector3(0, 0, -1)).applyQuaternion(this.object.quaternion),
-                    angle = velocity_vector.angleTo(target_vector),
-                    lerp_amount = Math.min((this.turn_rate * dt) /angle, 1),
-                    angle_thrust = (1 - (angle / Math.PI)) * 3 - 0.5,
-                    distance_thrust = Math.min(Math.max((range - 50) / 10, -3), 1);
-
-                var quaternion = (new THREE.Quaternion()).setFromUnitVectors(velocity_vector.normalize(), target_vector.normalize());
-                quaternion.multiply(this.object.quaternion);
-                this.object.quaternion.slerp(quaternion, lerp_amount);
-                this.thrust = Math.min(angle_thrust, distance_thrust);
-                if (angle < 0.2 && range < 100) this.current_weapon().fire(dt, this);
-            },
+            fighter_ai,
             [
-                new_laser(1),
+                new_laser(5),
                 new_missile(),
                 new_rocket()
             ],
@@ -289,7 +311,8 @@ function init_game_state(scene) {
             new THREE.Vector3(0,0,0),
             new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0),
             false,
-            assets.fighter.turn_rate
+            assets.fighter.turn_rate,
+            "AI"
         );
         physics.push(ship);
     }
@@ -337,7 +360,7 @@ function update_ships(dt) {
         if (ship.health < 0) ship.dead = true;
         if (ship.dead) {
             create_explosion(ship.scene, ship.object.position, ship.velocity, ship.object.quaternion, 50);
-            send_comms_message("SHIP EXPLOSION");
+            send_comms_message(ship.faction.toUpperCase() + " SHIP DESTROYED");
             ship.scene.remove(ship.object);
         } else {
             new_physics.push(ship);
@@ -383,7 +406,6 @@ function init_input_handlers(canvas) {
     }
 
     function changeCallback(evt) {
-        console.log("change callback is has been called", evt);
         if (document.pointerLockElement === document.body ||
             document.mozPointerLockElement === document.body ||
             document.webkitPointerLockElement === document.body) {
@@ -402,17 +424,11 @@ function init_input_handlers(canvas) {
     document.addEventListener('webkitpointerlockchange', changeCallback, false);
 
     function lockError(e) {
-        console.log("Pointer lock failed", e);
     }
 
     document.addEventListener('pointerlockerror', lockError, false);
     document.addEventListener('mozpointerlockerror', lockError, false);
     document.addEventListener('webkitpointerlockerror', lockError, false);
-
-
-    // Ask the browser to lock the pointer)
-    console.log("Requesting pointer lock");
-    document.body.requestPointerLock();
 
 
     var win = $(window);
