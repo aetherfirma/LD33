@@ -24,7 +24,7 @@ var assets = {
         size: 3
     }
 };
-var physics = [], explosions = [];
+var physics = [], explosions = [], lasers = [];
 var inputs = {
     mouse: {
         location: new THREE.Vector2(0,0),
@@ -60,6 +60,51 @@ function init_renderer() {
     };
 }
 
+function new_laser_beam(scene, origin, vector, length) {
+    var geometry = new THREE.Geometry(),
+        material = new THREE.LineBasicMaterial({color: 0xff0000}),
+        beam, end;
+
+    geometry.vertices.push(origin.clone());
+    end = new THREE.Vector3(0,0,-length);
+    end.applyQuaternion(vector);
+    end.add(origin);
+    geometry.vertices.push(end);
+    beam = new THREE.Line(geometry, material);
+    beam.life = 0.25;
+    lasers.push(beam);
+    beam.scene = scene;
+    scene.add(beam);
+}
+
+var raycaster = new THREE.Raycaster();
+
+function get_models_except(ship) {
+    var models = [];
+    for (var m = 0; m < physics.length; m++) {
+        if (physics[m] == ship) continue;
+        models.push(physics[m].object);
+    }
+    return models;
+}
+
+function get_ship_from_collision(collisions) {
+    if (collisions.length == 0) return null;
+    var collision = collisions[0],
+        distance = collision.distance,
+        point = collision.point,
+        ship = collision.object;
+    while (!ship.hasOwnProperty("ship")) {
+        ship = ship.parent;
+    }
+    ship = ship.ship;
+    return {
+        ship: ship,
+        distance: distance,
+        point: point
+    };
+}
+
 function new_laser() {
     return {
         name: "LASER",
@@ -78,7 +123,21 @@ function new_laser() {
             }
             ship.weapon_fire_cooldown += 0.1;
             this.capacity -= 5;
-            // TODO: Fire laser
+            var vec = new THREE.Vector3(0,0,-1);
+            vec.applyQuaternion(ship.object.quaternion);
+            vec.normalize();
+            raycaster.set(ship.object.position, vec);
+            var models = get_models_except(ship);
+            var collisions = raycaster.intersectObjects(models, true);
+            var target = get_ship_from_collision(collisions);
+            if (target) {
+                target.ship.health -= 10;
+                new_laser_beam(ship.scene, ship.object.position, ship.object.quaternion, target.distance);
+                create_explosion(ship.scene, target.point, target.ship.velocity, target.ship.object.quaternion, 5);
+            } else {
+                new_laser_beam(ship.scene, ship.object.position, ship.object.quaternion, 100);
+            }
+            console.log(collisions, models);
         }
     }
 }
@@ -131,7 +190,7 @@ function new_ship(scene, obj, size, ai, weapons, position, velocity, vector, exp
     scene.add(obj);
     obj.position.set(position.x, position.y, position.z);
     obj.rotation.clone(vector);
-    return {
+    var ship = {
         object: obj,
         velocity: velocity,
         thrust: 0,
@@ -169,6 +228,8 @@ function new_ship(scene, obj, size, ai, weapons, position, velocity, vector, exp
         scene: scene,
         explodes: explodes
     };
+    obj.ship = ship;
+    return ship;
 }
 
 function init_game_state(scene) {
@@ -280,6 +341,20 @@ function update_ships(dt) {
         }
     }
     physics = new_physics;
+}
+
+function update_laser_beams(dt) {
+    var new_lasers = [];
+    while (lasers.length > 0) {
+        var laser = lasers.pop();
+        laser.life -= dt;
+        if (laser.life < 0) {
+            laser.scene.remove(laser);
+        } else {
+            new_lasers.push(laser);
+        }
+    }
+    lasers = new_lasers;
 }
 
 function pointerLockElement() {
@@ -508,6 +583,7 @@ function _init() {
             if (pointerLockElement()) {
                 update_ships(dt);
                 update_explosions(dt);
+                update_laser_beams(dt);
             }
             update_ui(dt);
             last = now;
