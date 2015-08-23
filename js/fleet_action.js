@@ -12,10 +12,12 @@ var assets = {
     },
     earth: {},
     missile: {
-        size: 1
+        size: 1,
+        turn_rate: 2
     },
     rocket: {
-        size: 1
+        size: 1,
+        turn_rate: 0.1
     }
 };
 var physics = [], explosions = [], lasers = [];
@@ -116,8 +118,8 @@ function new_laser(strength) {
             if (this.capacity < 0) {
                 return;
             }
-            ship.weapon_fire_cooldown += 0.25;
-            this.capacity -= 15;
+            ship.weapon_fire_cooldown += 0.3;
+            this.capacity -= 10;
             var vec = new THREE.Vector3(0,0,-1);
             vec.applyQuaternion(ship.object.quaternion);
             vec.normalize();
@@ -180,7 +182,7 @@ function new_rocket() {
     }
 }
 
-function new_ship(scene, obj, size, ai, weapons, position, velocity, vector, explodes, turn_rate, faction) {
+function new_ship(scene, obj, size, ai, weapons, position, velocity, vector, explodes, turn_rate, faction, type) {
     scene.add(obj);
     obj.position.set(position.x, position.y, position.z);
     obj.rotation.clone(vector);
@@ -223,7 +225,8 @@ function new_ship(scene, obj, size, ai, weapons, position, velocity, vector, exp
         explodes: explodes,
         turn_rate: turn_rate,
         faction: faction,
-        target: null
+        target: null,
+        type: type
     };
     obj.ship = ship;
     return ship;
@@ -234,10 +237,23 @@ function random_element(array) {
     return array[n];
 }
 
+function acquire_target(targeter) {
+    var min_distance = 10e9, candidate = null;
+    for (var s = 0; s < physics.length; s++) {
+        var ship = physics[s];
+        if (ship.faction === targeter.faction) continue;
+        var distance = ship.object.position.clone().sub(targeter.object.position).length();
+        if (distance < min_distance) {
+            min_distance = distance;
+            candidate = ship;
+        }
+    }
+    return candidate;
+}
+
 function fighter_ai(dt) {
-    if (this.target === null || this.target === undefined) this.target = random_element(physics);
     if (this.target === null || this.target === undefined ||  this.target.dead || this.target.faction === this.faction || this.target == this) {
-        this.target = null
+        this.target = acquire_target(this);
     }
 
     if (this.target !== null) {
@@ -278,6 +294,8 @@ function init_game_state(scene) {
             if (inputs.keyboard.a) this.change_weapon(false);
             if (inputs.mouse.left) this.current_weapon().fire(dt, this);
             if (inputs.mouse.right) this.next_weapon().fire(dt, this);
+
+            this.health = Math.min(100, this.health + (this.health / 15 * dt));
         },
         [
             new_laser(5),
@@ -289,7 +307,8 @@ function init_game_state(scene) {
         new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0),
         false,
         assets.fighter.turn_rate,
-        "player"
+        "player",
+        "experimental ship"
     );
     physics.push(player);
 
@@ -304,18 +323,37 @@ function init_game_state(scene) {
             fighter_ai,
             [
                 new_laser(5),
-                new_missile(),
-                new_rocket()
             ],
             new THREE.Vector3(Math.random() * 1000 - 500, Math.random() * 1000 - 500, Math.random() * 1000 - 500),
             new THREE.Vector3(0,0,0),
             new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0),
             false,
             assets.fighter.turn_rate,
-            "AI"
+            "police",
+            "fighter"
         );
         physics.push(ship);
     }
+
+    ship = new_ship(
+        scene,
+        assets.capital_ship.model.clone(),
+        assets.capital_ship.size,
+        fighter_ai,
+        [
+            new_laser(20),
+            new_rocket()
+        ],
+        new THREE.Vector3(Math.random() * 1000 - 500, Math.random() * 1000 - 500, Math.random() * 1000 - 500),
+        new THREE.Vector3(0,0,0),
+        new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0),
+        false,
+        assets.fighter.turn_rate,
+        "police",
+        "capital ship"
+    );
+    physics.push(ship);
+
 
     return player; // change this!
 }
@@ -340,27 +378,17 @@ function update_ships(dt) {
         for (var s=0; s < physics.length; s++) {
             var target = physics[s];
             if (ship.has_collided(target)) {
-                //if (ship == player) {
-                //    target.dead = true;
-                //} else if (target == player) {
-                //    ship.dead = true;
-                //} else // REMOVE THIS
-                if (ship.radius > target.radius) {
-                    ship.health -= target.radius_squared;
-                    target.dead = true;
-                } else if (ship.radius < target.radius) {
-                    target.health -= ship.radius_squared;
-                    ship.dead = true;
-                } else {
-                    ship.dead = target.dead = true;
-                }
+                ship.health -= target.radius_squared * 10 * dt;
+                create_explosion(ship.scene, ship.object.position, ship.velocity, ship.object.quaternion, 5);
+                target.health -= ship.radius_squared * 10 * dt;
+                create_explosion(target.scene, target.object.position, target.velocity, target.object.quaternion, 5);
             }
         }
 
         if (ship.health < 0) ship.dead = true;
         if (ship.dead) {
             create_explosion(ship.scene, ship.object.position, ship.velocity, ship.object.quaternion, 50);
-            send_comms_message(ship.faction.toUpperCase() + " SHIP DESTROYED");
+            send_comms_message(ship.faction.toUpperCase() + " " + ship.type.toUpperCase() + " DESTROYED");
             ship.scene.remove(ship.object);
         } else {
             new_physics.push(ship);
@@ -655,7 +683,7 @@ function _init() {
     requestAnimationFrame(render);
 }
 
-var colladaLoader = new THREE.ColladaLoader({convertUpAxis: true}),
+var colladaLoader = new THREE.ColladaLoader({convertUpAxis: true, centerGeometry: true}),
     textureLoader = new THREE.TextureLoader(),
     required = [
         {
@@ -668,6 +696,27 @@ var colladaLoader = new THREE.ColladaLoader({convertUpAxis: true}),
                 assets.fighter.model = dae;
             }
         },
+        {
+            loader: colladaLoader,
+            url: "models/capital.dae",
+            callback: function (collada) {
+                var dae = collada.scene.children[0];
+                dae.scale.x = dae.scale.y = dae.scale.z = 3/39;
+                dae.updateMatrix();
+                assets.capital_ship.model = dae;
+            }
+        },
+        //{
+        //    loader: colladaLoader,
+        //    url: "models/missile.dae",
+        //    callback: function (collada) {
+        //        var dae = collada.scene.children[0];
+        //        dae.scale.x = dae.scale.y = dae.scale.z = 3/39;
+        //        dae.updateMatrix();
+        //        assets.missile.model = dae;
+        //        assets.rocket.model = dae;
+        //    }
+        //},
         {
             loader: textureLoader,
             url: "models/earth.png",
