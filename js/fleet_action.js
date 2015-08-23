@@ -351,28 +351,18 @@ function update_explosions(dt) {
 var ui_console = $("#console");
 
 function update_ui(dt) {
-    if (!pointerLockElement()) {
-        ui_console.text("PAUSED");
-    } else {
+    if (pointerLockElement()) {
         var thrust = Math.round(player.thrust * 100) / 2.5,
             shields = Math.round(player.health * 10) / 10,
             velocity = Math.round(player.velocity.length() * 50);
-            msg = "";
-        msg += "ENGINES:<br>";
-        if (thrust > 100) {
-            msg += "<span style='color:red;'>" + thrust + "%</span>/" + velocity + "m/s";
-        } else {
-            msg += thrust + "%/" + velocity + "m/s";
-        }
-        msg += "<br>HULL INTEGRITY:<br>";
-        if (shields < 25) {
-            msg += "<span style='color:red;'>" + shields + "%</span>";
-        } else if (shields < 50) {
-            msg += "<span style='color:orange;'>" + shields + "%</span>";
-        } else {
-            msg += shields + "%";
-        }
-        ui_console.html(msg);
+        ui_console.find("#engines .value").text(velocity + "m/s");
+        if (thrust > 100) ui_console.find("#engines .value").addClass("error");
+        else ui_console.find("#engines .value").removeClass("error");
+
+        ui_console.find("#shields .value").text(shields + "%");
+        ui_console.find("#shields .value").removeClass("error warning");
+        if (shields < 33) ui_console.find("#shields .value").addClass("warning");
+        else if (shields < 66) ui_console.find("#shields .value").addClass("error");
     }
 }
 

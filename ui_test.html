@@ -8,7 +8,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r71/three.js"></script>
     <script src="js-lib/ColladaLoader.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; perspective: 600px; }
+        body { margin: 0; overflow: hidden; perspective: 600px;
+            background-color: black; }
         canvas { width: 100%; height: 100% }
         #console {
             transform: rotateX(45deg);
@@ -80,23 +81,18 @@
         #weapon-left, #weapon-right {
             margin-top: 3em;
         }
-        .warning {
-            background-color: rgba(255, 130, 63, 0.75);
-        }
-        .error {
-            background-color: rgba(158, 0, 5, 0.75);
-        }
     </style>
 </head>
 <body>
+    <canvas width="1157" height="979" style="width: 1157px; height: 979px;"></canvas>
     <div id="console">
         <div id="upper" class="clearfix">
             <div id="engines" class="left">
                 <div class="title">SPEED</div>
                 <div class="value">43m/s</div>
             </div>
-            <div id="shields" class="right">
-                <div class="title">SHIELDS</div>
+            <div id="thrust" class="right">
+                <div class="title">THRUST</div>
                 <div class="value">43%</div>
             </div>
         </div>
@@ -104,7 +100,10 @@
             <div id="chat" class="clearfix">
                 <div class="title">COMMS</div>
                 <ul>
-                    <li>SYSTEMS ACTIVE</li>
+                    <li>All pilots, attack 403-D!</li>
+                    <li>For the love of god, stop!</li>
+                    <li>You can't do this!</li>
+                    <li>What are you doing?</li>
                 </ul>
             </div>
             <div id="weapon-left" class="left">
@@ -121,9 +120,5 @@
             </div>
         </div>
     </div>
-    <script src="js/fleet_action.js"></script>
-    <script>
-        init();
-    </script>
 </body>
 </html>
