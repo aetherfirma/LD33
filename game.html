@@ -86,6 +86,20 @@
         .error {
             background-color: rgba(158, 0, 5, 0.75);
         }
+        #score {
+            position: absolute;
+            left: 20%;
+            right: 20%;
+            top: 3%;
+            transform: rotateX(-10deg);
+            background-color: rgb(83, 209, 55);
+            padding: 1em;
+            text-align: center;
+            color: #fff;
+            font-size: 2em;
+            opacity: 0.75;
+            font-family: webexo, sans-serif;
+        }
     </style>
 </head>
 <body>
@@ -121,6 +135,7 @@
             </div>
         </div>
     </div>
+    <div id="score"></div>
     <script src="js/fleet_action.js"></script>
     <script>
         init();

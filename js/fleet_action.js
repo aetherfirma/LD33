@@ -351,43 +351,11 @@ function rocket_ai(dt) {
     }
 }
 
-function init_game_state(scene) {
-    var player = new_ship(
-        scene,
-        assets.fighter.model.clone(),
-        assets.fighter.size,
-        function (dt) {
-            if (inputs.keyboard.w) {
-                this.thrust = Math.min(3, this.thrust + dt * 0.75);
-            }
-            if (inputs.keyboard.s) {
-                this.thrust = Math.max(-1, this.thrust - dt * 0.75);
-            }
-            this.object.rotateX(inputs.mouse.location.y * -dt * 0.1);
-            this.object.rotateY(inputs.mouse.location.x * -dt * 0.1);
-            if (inputs.keyboard.d) this.change_weapon(true);
-            if (inputs.keyboard.a) this.change_weapon(false);
-            if (inputs.mouse.left) this.current_weapon().fire(dt, this);
-            if (inputs.mouse.right) this.next_weapon().fire(dt, this);
+var fib1 = 0, fib2 = 1;
 
-            this.health = Math.min(100, this.health + (this.health / 15 * dt));
-        },
-        [
-            new_laser(5),
-            new_missile(),
-            new_rocket()
-        ],
-        new THREE.Vector3(0,0,0),
-        new THREE.Vector3(0,0,0),
-        new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0),
-        false,
-        assets.fighter.turn_rate,
-        "player",
-        "experimental ship"
-    );
-    physics.push(player);
-
+function reinforcements(scene) {
     var n, ship;
+    score += 1;
 
     // Enemies
     for (n = 0; n < 5; n++) {
@@ -428,7 +396,45 @@ function init_game_state(scene) {
         "capital ship"
     );
     physics.push(ship);
+}
 
+function init_game_state(scene) {
+    var player = new_ship(
+        scene,
+        assets.fighter.model.clone(),
+        assets.fighter.size,
+        function (dt) {
+            if (inputs.keyboard.w) {
+                this.thrust = Math.min(3, this.thrust + dt * 0.75);
+            }
+            if (inputs.keyboard.s) {
+                this.thrust = Math.max(-1, this.thrust - dt * 0.75);
+            }
+            this.object.rotateX(inputs.mouse.location.y * -dt * 0.1);
+            this.object.rotateY(inputs.mouse.location.x * -dt * 0.1);
+            if (inputs.keyboard.d) this.change_weapon(true);
+            if (inputs.keyboard.a) this.change_weapon(false);
+            if (inputs.mouse.left) this.current_weapon().fire(dt, this);
+            if (inputs.mouse.right) this.next_weapon().fire(dt, this);
+
+            this.health = Math.min(100, this.health + (this.health / 15 * dt));
+        },
+        [
+            new_laser(5),
+            new_missile(),
+            new_rocket()
+        ],
+        new THREE.Vector3(0,0,0),
+        new THREE.Vector3(0,0,0),
+        new THREE.Euler(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, 0),
+        false,
+        assets.fighter.turn_rate,
+        "player",
+        "experimental ship"
+    );
+    physics.push(player);
+
+    reinforcements(scene);
 
     return player; // change this!
 }
@@ -469,6 +475,10 @@ function update_ships(dt) {
                 detonations.push({location: ship.object.position.clone(), power: ship.explodes});
             } else {
                 send_comms_message(ship.faction.toUpperCase() + " " + ship.type.toUpperCase() + " DESTROYED");
+                if (ship.faction == "police") {
+                    if (ship.type == "fighter") score += 1;
+                    if (ship.type == "capital ship") score += 5;
+                }
             }
             ship.scene.remove(ship.object);
         } else {
@@ -509,10 +519,24 @@ function pointerLockElement() {
             document.webkitPointerLockElement;
 }
 
-function init_input_handlers(canvas) {
-    document.body.onclick = document.body.requestPointerLock ||
+function init_input_handlers(scene, camera) {
+    $("#score").click(function () {
+        $("#score").hide();
+        if (player.dead) {
+            for (var s in physics) {
+                physics[s].dead = true;
+            }
+            fib1 = 0;
+            fib2 = 1;
+            score = 0;
+            player = init_game_state(scene);
+            player.object.add(camera);
+        }
+        document.body.requestPointerLock = (document.body.requestPointerLock ||
             document.body.mozRequestPointerLock ||
-            document.body.webkitRequestPointerLock;
+            document.body.webkitRequestPointerLock);
+        document.body.requestPointerLock();
+    });
 
     function moveCallback(e) {
         inputs.mouse.location.x = e.movementX ||
@@ -536,6 +560,11 @@ function init_input_handlers(canvas) {
             // Pointer was just unlocked
             // Disable the mousemove listener
             document.removeEventListener("mousemove", moveCallback, false);
+            if (!player.dead) {
+                var score_window = $("#score");
+                score_window.show();
+                score_window.html("The game is paused. Click this window to continue.");
+            }
         }
     }
 
@@ -685,8 +714,15 @@ function send_comms_message(message) {
 function update_ui(dt) {
     if (player.dead) {
         ui_console.hide();
+        $("#score").show();
+        $("#score").html("You died. You scored " + score + " points. Click this window to try again.");
+        document.exitPointerLock = document.exitPointerLock    ||
+                           document.mozExitPointerLock ||
+                           document.webkitExitPointerLock;
+        document.exitPointerLock();
         return;
     }
+    ui_console.show();
 
     var thrust = Math.round(player.thrust * 100) / 2.5,
         shields = Math.round(player.health * 10) / 10,
@@ -739,6 +775,31 @@ function create_earth(scene) {
     scene.add(new THREE.PointCloud(geometry, material));
 }
 
+var reinfocement_messages = [
+    "You won't get away this time!",
+    "Sending reinforcements!",
+    "This is one step too far.",
+    "Just give up already!"
+];
+
+function call_for_reinforcements(scene) {
+    var capital_ships = 0, fighters = 0;
+    for (var s in physics) {
+        if (physics[s].type == "capital ship") capital_ships++;
+        if (physics[s].faction == "police" && physics[s].type == "fighter") fighters++;
+    }
+    if (capital_ships == 0 && fighters < 10) {
+        send_comms_message("POLICE: " + random_element(reinfocement_messages));
+        var n = fib1 + fib2;
+        fib1 = fib2;
+        fib2 = n;
+        for (var i = 0; i < n; i++) reinforcements(scene);
+        send_comms_message("&gt;" + n + " WAVES OF REINFORCEMENTS INBOUND&lt;")
+    }
+}
+
+var score = 0;
+
 function _init() {
     var renderer = init_renderer(),
         scene = new THREE.Scene(),
@@ -750,6 +811,7 @@ function _init() {
                 update_ships(dt);
                 update_explosions(dt);
                 update_laser_beams(dt);
+                call_for_reinforcements(scene);
             }
             update_ui(dt);
             last = now;
@@ -773,7 +835,28 @@ function _init() {
     directional.position.set(0, 1000, 0);
     scene.add(directional);
 
-    init_input_handlers(renderer.renderer.domElement);
+    init_input_handlers(scene, renderer.camera);
+
+    var opening = "<strong>Prison Break</strong><br>\n" +
+                  "Congratulations! No-one thought it was possible but " +
+                  "you've done it. You broke into the secret government " +
+                  "research facility on the north pole and stole the XN-47 " +
+                  "space fighter, a state of the art warmachine complete with " +
+                  "limited self repair capability and a full complement of " +
+                  "missiles, rockets and a high powered laser. Sadly, the " +
+                  "space police have caught up with you. Your face is " +
+                  "plastered wall to wall on earth as 'Public Enemy #1'. " +
+                  "You might not walk away from this one, but you may as well " +
+                  "take some of 'em with you.<br><br>" +
+                  "<strong>Controls</strong><br>" +
+                  "Mouse to aim, left click to fire selected weapon, " +
+                  "right click to fire secondary weapon (shown to the right) " +
+                  "w/s to increase/decrease speed, a/d to cycle through " +
+                  "weapons. Small fighters are worth 1 point, capital ships " +
+                  "worth 5.<br><br>" +
+                  "Click this window to start the game.";
+
+    $("#score").html(opening);
 
     requestAnimationFrame(render);
 }
